@@ -1,7 +1,7 @@
 package com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens
 
 import android.Manifest
-import android.annotation.SuppressLint
+import android.annotationSuppressLint
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.media.AudioFormat
@@ -27,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,8 +40,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.R
-import com.k2fsa.sherpa.onnx.simulate.streaming.asr.SimulateStreamingAsr
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.TAG
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BeisongAsr
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BeisongDiagnose
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BEISONG_TARGET_TEXT
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -50,42 +51,29 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private var audioRecord: AudioRecord? = null
-
 private const val sampleRateInHz = 16000
 private var samplesChannel = Channel<FloatArray>(capacity = Channel.UNLIMITED)
+
+private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
 @Composable
 fun HomeScreen() {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-
     val activity = LocalContext.current as Activity
-    var isStarted by remember { mutableStateOf(false) }
-    val resultList: MutableList<String> = remember { mutableStateListOf() }
-    val lazyColumnListState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
 
+    var isStarted by remember { mutableStateOf(false) }
     var isInitialized by remember { mutableStateOf(false) }
-
-    // we change asrModelType in github actions
-    val asrModelType = 15
+    val resultList = remember { mutableStateListOf<String>() }
+    val lazyColumnListState = rememberLazyListState()
 
     LaunchedEffect(Unit) {
-        if (asrModelType >= 9000) {
-            resultList.add("Using QNN for Qualcomm NPU (HTP backend)")
-            resultList.add("It takes about 10s for the first run to start")
-            resultList.add("Later runs require less than 1 second")
-        }
-
         withContext(Dispatchers.Default) {
-            // Call your heavy initialization off the main thread
-            SimulateStreamingAsr.initOfflineRecognizer(activity, asrModelType)
-            SimulateStreamingAsr.initVad(activity.assets)
+            BeisongAsr.init(context)
+            BeisongAsr.initVad(context)
         }
-
-        // Back on the Main thread: update UI state
         isInitialized = true
-        resultList.clear()
     }
 
     val onRecordingButtonClick: () -> Unit = {
@@ -96,141 +84,108 @@ fun HomeScreen() {
                     Manifest.permission.RECORD_AUDIO
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
-                Log.i(TAG, "Recording is not allowed")
-            } else {
-                // recording is allowed
-                val audioSource = MediaRecorder.AudioSource.MIC
-                val channelConfig = AudioFormat.CHANNEL_IN_MONO
-                val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-                val numBytes =
-                    AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
-                audioRecord = AudioRecord(
-                    audioSource,
-                    sampleRateInHz,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    numBytes * 2 // a sample has two bytes as we are using 16-bit PCM
-                )
+                // 仅在用户点击录音按钮时才请求权限 — 不在启动时弹窗
+                val permissions = arrayOf(Manifest.permission.RECORD_AUDIO)
+                ActivityCompat.requestPermissions(activity, permissions, REQUEST_RECORD_AUDIO_PERMISSION)
+                return@onRecordingButtonClick
+            }
 
-                SimulateStreamingAsr.vad.reset()
+            val audioSource = MediaRecorder.AudioSource.MIC
+            val channelConfig = AudioFormat.CHANNEL_IN_MONO
+            val audioFormat = AudioFormat.ENCODING_PCM_16BIT
+            val numBytes = AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
+            audioRecord = AudioRecord(
+                audioSource, sampleRateInHz, AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT, numBytes * 2
+            )
+            BeisongAsr.vad.reset()
 
-                CoroutineScope(Dispatchers.IO).launch {
-                    Log.i(TAG, "processing samples")
-                    val interval = 0.1 // i.e., 100 ms
-                    val bufferSize = (interval * sampleRateInHz).toInt() // in samples
-                    val buffer = ShortArray(bufferSize)
-
-                    audioRecord?.let { it ->
-                        it.startRecording()
-
-                        while (isStarted) {
-                            val ret = audioRecord?.read(buffer, 0, buffer.size)
-                            ret?.let { n ->
-                                val samples = FloatArray(n) { buffer[it] / 32768.0f }
-                                samplesChannel.send(samples)
-                            }
-                        }
-                        val samples = FloatArray(0)
-                        samplesChannel.send(samples)
-                    }
-                }
-
-                CoroutineScope(Dispatchers.Default).launch {
-                    var buffer = arrayListOf<Float>()
-                    var offset = 0
-                    val windowSize = 512
-                    var isSpeechStarted = false
-                    var startTime = System.currentTimeMillis()
-                    var lastText = ""
-                    var added = false
-                    var speechStartOffset = 0
-
-
+            CoroutineScope(Dispatchers.IO).launch {
+                val interval = 0.1
+                val bufferSize = (interval * sampleRateInHz).toInt()
+                val buffer = ShortArray(bufferSize)
+                audioRecord?.let { it ->
+                    it.startRecording()
                     while (isStarted) {
-                        for (s in samplesChannel) {
-                            if (s.isEmpty()) {
-                                break
-                            }
+                        val ret = audioRecord?.read(buffer, 0, buffer.size)
+                        ret?.let { n ->
+                            val samples = FloatArray(n) { buffer[it] / 32768.0f }
+                            samplesChannel.send(samples)
+                        }
+                    }
+                    samplesChannel.send(FloatArray(0))
+                }
+            }
 
-                            buffer.addAll(s.toList())
-                            while (offset + windowSize < buffer.size) {
-                                SimulateStreamingAsr.vad.acceptWaveform(
-                                    buffer.subList(
-                                        offset,
-                                        offset + windowSize
-                                    ).toFloatArray()
-                                )
-                                offset += windowSize
-                                if (!isSpeechStarted && SimulateStreamingAsr.vad.isSpeechDetected()) {
-                                    isSpeechStarted = true
-                                    // offset 0.4s
-                                    speechStartOffset = offset - 6400
-                                    if(speechStartOffset < 0) {
-                                        speechStartOffset = 0
-                                    }
-                                    startTime = System.currentTimeMillis()
-                                }
-                            }
+            CoroutineScope(Dispatchers.Default).launch {
+                var buffer = arrayListOf<Float>()
+                var offset = 0
+                val windowSize = 512
+                var isSpeechStarted = false
+                var startTime = System.currentTimeMillis()
+                var lastText = ""
+                var added = false
+                var speechStartOffset = 0
 
-                            val elapsed = System.currentTimeMillis() - startTime
-                            if (isSpeechStarted && elapsed > 200) {
-                                // Run ASR every 0.2 seconds == 200 milliseconds
-                                // You can change it to some other value
-                                val stream = SimulateStreamingAsr.recognizer.createStream()
-                                stream.acceptWaveform(
-                                    buffer.subList(speechStartOffset, offset).toFloatArray(),
-                                    sampleRateInHz
-                                )
-                                SimulateStreamingAsr.recognizer.decode(stream)
-                                val result = SimulateStreamingAsr.recognizer.getResult(stream)
-                                stream.release()
-
-                                lastText = result.text
-
-                                if (lastText.isNotBlank()) {
-                                    if (!added || resultList.isEmpty()) {
-                                        resultList.add(lastText)
-                                        added = true
-                                    } else {
-                                        resultList[resultList.size - 1] = lastText
-                                    }
-
-                                    coroutineScope.launch {
-                                        lazyColumnListState.animateScrollToItem(resultList.size - 1)
-                                    }
-                                }
-
+                while (isStarted) {
+                    for (s in samplesChannel) {
+                        if (s.isEmpty()) break
+                        buffer.addAll(s.toList())
+                        while (offset + windowSize < buffer.size) {
+                            BeisongAsr.vad.acceptWaveform(
+                                buffer.subList(offset, offset + windowSize).toFloatArray()
+                            )
+                            offset += windowSize
+                            if (!isSpeechStarted && BeisongAsr.vad.isSpeechDetected()) {
+                                isSpeechStarted = true
+                                speechStartOffset = (offset - 6400).coerceAtLeast(0)
                                 startTime = System.currentTimeMillis()
                             }
-
-
-                            while (!SimulateStreamingAsr.vad.empty()) {
-                                val stream = SimulateStreamingAsr.recognizer.createStream()
-                                stream.acceptWaveform(
-                                    SimulateStreamingAsr.vad.front().samples,
-                                    sampleRateInHz
-                                )
-                                SimulateStreamingAsr.recognizer.decode(stream)
-                                val result = SimulateStreamingAsr.recognizer.getResult(stream)
-                                stream.release()
-
-                                isSpeechStarted = false
-                                SimulateStreamingAsr.vad.pop()
-
-                                buffer = arrayListOf()
-                                offset = 0
-                                if (lastText.isNotBlank()) {
-                                    if (added && resultList.isNotEmpty()) {
-                                        resultList[resultList.size - 1] = result.text
-                                    } else {
-                                        resultList.add(result.text)
-                                    }
-
-                                    coroutineScope.launch {
-                                        lazyColumnListState.animateScrollToItem(resultList.size - 1)
-                                    }
-                                    added = false
+                        }
+                        val elapsed = System.currentTimeMillis() - startTime
+                        if (isSpeechStarted && elapsed > 200) {
+                            val stream = BeisongAsr.recognizer.createStream()
+                            stream.acceptWaveform(
+                                buffer.subList(speechStartOffset, offset).toFloatArray(),
+                                sampleRateInHz
+                            )
+                            BeisongAsr.recognizer.decode(stream)
+                            val result = BeisongAsr.recognizer.getResult(stream)
+                            stream.release()
+                            lastText = result.text
+                            if (lastText.isNotBlank()) {
+                                if (!added || resultList.isEmpty()) {
+                                    resultList.add(lastText)
+                                    added = true
+                                } else {
+                                    resultList[resultList.size - 1] = lastText
                                 }
+                                coroutineScope.launch {
+                                    lazyColumnListState.animateScrollToItem(resultList.size - 1)
+                                }
+                            }
+                            startTime = System.currentTimeMillis()
+                        }
+                        while (!BeisongAsr.vad.empty()) {
+                            val stream = BeisongAsr.recognizer.createStream()
+                            stream.acceptWaveform(BeisongAsr.vad.front().samples, sampleRateInHz)
+                            BeisongAsr.recognizer.decode(stream)
+                            val result = BeisongAsr.recognizer.getResult(stream)
+                            stream.release()
+                            isSpeechStarted = false
+                            BeisongAsr.vad.pop()
+                            buffer = arrayListOf()
+                            offset = 0
+                            if (lastText.isNotBlank()) {
+                                if (added && resultList.isNotEmpty()) {
+                                    resultList[resultList.size - 1] = result.text
+                                } else {
+                                    resultList.add(result.text)
+                                }
+                                coroutineScope.launch {
+                                    lazyColumnListState.animateScrollToItem(resultList.size - 1)
+                                }
+                                added = false
                             }
                         }
                     }
@@ -240,67 +195,56 @@ fun HomeScreen() {
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
+
+            if (resultList.isNotEmpty()) {
+                coroutineScope.launch(Dispatchers.Default) {
+                    val stream = BeisongAsr.recognizer.createStream()
+                    val result = BeisongAsr.recognizer.getResult(stream)
+                    stream.release()
+                    val tokens = result.tokens.toList()
+                    val timestamps = result.timestamps.toList()
+                    val diagnosis = BeisongDiagnose.diagnose(
+                        BEISONG_TARGET_TEXT, tokens, timestamps.toFloatArray()
+                    )
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            "评分: ${diagnosis.score.total}/100 | 错字${diagnosis.errors.size}处 | 停顿${diagnosis.pauses.size}处 | 回读${diagnosis.repeats.size}处",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
         }
     }
 
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.TopCenter,
-    ) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(modifier = Modifier) {
             if (!isInitialized) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                     Text(text = "Initializing... Please wait")
-                }
-            }
-            if (asrModelType >= 9000) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    Text(text = "Qualcomm NPU (HTP backend with QNN)")
                 }
             }
 
             HomeButtonRow(
-                isStarted = isStarted,
-                isInitialized = isInitialized,
+                isStarted = isStarted, isInitialized = isInitialized,
                 onRecordingButtonClick = onRecordingButtonClick,
                 onCopyButtonClick = {
                     if (resultList.isNotEmpty()) {
                         val s = resultList.mapIndexed { i, s -> "${i + 1}: $s" }
                             .joinToString(separator = "\n")
                         clipboardManager.setText(AnnotatedString(s))
-
-                        Toast.makeText(
-                            context,
-                            "Copied to clipboard",
-                            Toast.LENGTH_SHORT
-                        )
-                            .show()
+                        Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
                     } else {
-                        Toast.makeText(
-                            context,
-                            "Nothing to copy",
-                            Toast.LENGTH_SHORT
-                        )
-                            .show()
-
+                        Toast.makeText(context, "Nothing to copy", Toast.LENGTH_SHORT).show()
                     }
                 },
-                onClearButtonClick = {
-                    resultList.clear()
-                }
+                onClearButtonClick = { resultList.clear() }
             )
 
             if (resultList.size > 0) {
                 LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(),
+                    modifier = Modifier.fillMaxWidth().fillMaxHeight(),
                     contentPadding = PaddingValues(16.dp),
                     state = lazyColumnListState
                 ) {
@@ -309,12 +253,10 @@ fun HomeScreen() {
                     }
                 }
             }
-
         }
     }
 }
 
-@SuppressLint("UnrememberedMutableState")
 @Composable
 private fun HomeButtonRow(
     modifier: Modifier = Modifier,
@@ -324,34 +266,17 @@ private fun HomeButtonRow(
     onCopyButtonClick: () -> Unit,
     onClearButtonClick: () -> Unit,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.Center,
-    ) {
-        Button(
-            onClick = onRecordingButtonClick,
-            enabled = isInitialized,
-        ) {
+    Row(modifier = modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Button(onClick = onRecordingButtonClick, enabled = isInitialized) {
             Text(text = stringResource(if (isStarted) R.string.stop else R.string.start))
         }
-
         Spacer(modifier = Modifier.width(24.dp))
-
-        Button(
-            onClick = onCopyButtonClick,
-            enabled = isInitialized,
-        ) {
+        Button(onClick = onCopyButtonClick, enabled = isInitialized) {
             Text(text = stringResource(id = R.string.copy))
         }
-
         Spacer(modifier = Modifier.width(24.dp))
-
-        Button(
-            onClick = onClearButtonClick,
-            enabled = isInitialized,
-        ) {
+        Button(onClick = onClearButtonClick, enabled = isInitialized) {
             Text(text = stringResource(id = R.string.clear))
         }
     }
 }
-
