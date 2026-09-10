@@ -5,7 +5,9 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.sp
 
 /**
  * 智能背诵助手 — 诊断算法 (Kotlin 移植)
@@ -198,23 +200,60 @@ object BeisongDiagnose {
     }
 
     // ─── 渲染带标注的背诵报告 (Compose AnnotatedString) ───────
+    // FR-008 标注图例: 红=错字/漏字, 灰删除线=多字, 黄=停顿, 金下划线=回读
     fun renderReport(targetText: String, tokens: List<String>, timestamps: FloatArray,
                      diagnosis: Diagnosis): AnnotatedString {
-        return buildAnnotatedString {
+        val recited = tokens.joinToString("")
+        // 每个字符的时间戳(由 token 展开; token 可能是子词多字符)
+        val charTs = HashMap<Int, Float>()
+        run {
+            var pos = 0
             for (i in tokens.indices) {
-                val ch = tokens[i]
-                if (i > 0 && timestamps[i] - timestamps[i - 1] > PAUSE_THRESHOLD_S) {
-                    withStyle(SpanStyle(color = Color(0xFFE6A800), fontWeight = FontWeight.Bold)) {
-                        append("【⏸${"%.1f".format(timestamps[i] - timestamps[i - 1])}s】")
-                    }
+                val t = if (i < timestamps.size) timestamps[i] else 0f
+                for (k in tokens[i].indices) charTs[pos + k] = t
+                pos += tokens[i].length
+            }
+        }
+        // 回读片段在转写文本中的字符区间
+        val repeatRanges = mutableListOf<IntRange>()
+        for (rep in diagnosis.repeats) {
+            var idx = recited.indexOf(rep.segment)
+            while (idx >= 0) {
+                repeatRanges.add(idx until idx + rep.segment.length)
+                idx = recited.indexOf(rep.segment, idx + 1)
+            }
+        }
+        val pauseStyle = SpanStyle(color = Color(0xFFD4A017), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        val errorStyle = SpanStyle(color = Color(0xFFC0392B), fontWeight = FontWeight.Bold)
+        val extraStyle = SpanStyle(color = Color(0xFF8A7F70), textDecoration = TextDecoration.LineThrough)
+        val repeatStyle = SpanStyle(color = Color(0xFF2C2416), textDecoration = TextDecoration.Underline, background = Color(0x33C8A45C))
+        val (_, ops) = lcsDiff(targetText, recited)
+        return buildAnnotatedString {
+            var rIdx = 0
+            fun pauseBefore(): Float {
+                if (rIdx == 0) return 0f
+                val cur = charTs[rIdx] ?: return 0f
+                val prev = charTs[rIdx - 1] ?: return 0f
+                return cur - prev
+            }
+            fun emitRecitedChar(c: Char) {
+                val gap = pauseBefore()
+                if (gap > PAUSE_THRESHOLD_S) {
+                    withStyle(pauseStyle) { append("[停${"%.1f".format(gap)}s]") }
                 }
-                val isError = diagnosis.errors.any { it.type == "error" && it.actual.contains(ch) }
-                if (isError) {
-                    withStyle(SpanStyle(color = Color.Red, fontWeight = FontWeight.Bold)) {
-                        append(ch)
-                    }
+                if (repeatRanges.any { rIdx in it }) {
+                    withStyle(repeatStyle) { append(c) }
                 } else {
-                    append(ch)
+                    append(c)
+                }
+                rIdx++
+            }
+            for ((tag, a, b) in ops) {
+                when (tag) {
+                    "equal" -> for (c in b) emitRecitedChar(c)
+                    "delete" -> withStyle(errorStyle) { append(a) }   // 漏字: 标红期望字符
+                    "replace" -> { for (c in b) { withStyle(errorStyle) { append(c) }; rIdx++ } }
+                    "insert" -> for (c in b) { withStyle(extraStyle) { append(c) }; rIdx++ }
                 }
             }
         }
