@@ -22,6 +22,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.core.app.ActivityCompat
@@ -55,7 +56,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        // 不在启动时请求权限 — 移到用户点击录音按钮时
+        // MVP: 不在启动时请求权限 — 移到用户点击录音按钮时 (Home.kt)
     }
 
     @Deprecated("Deprecated in Java")
@@ -66,7 +67,7 @@ class MainActivity : ComponentActivity() {
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         val permissionToRecordAccepted = if (requestCode == REQUEST_RECORD_AUDIO_PERMISSION) {
-            grantResults[0] == PackageManager.PERMISSION_GRANTED
+            grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
         } else {
             false
         }
@@ -75,10 +76,9 @@ class MainActivity : ComponentActivity() {
             Log.e(TAG, "Audio record is disallowed")
             Toast.makeText(
                 this,
-                "录音权限未授予，无法使用背诵助手",
+                "需要录音权限才能使用背诵助手",
                 Toast.LENGTH_LONG
-            )
-                .show()
+            ).show()
         } else {
             Log.i(TAG, "Audio record is permitted")
         }
@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainScreen(modifier: Modifier = Modifier) {
     val navController = rememberNavController()
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -106,14 +107,51 @@ fun MainScreen(modifier: Modifier = Modifier) {
         },
         content = { padding ->
             Column(Modifier.padding(padding)) {
-                NavHost(navController = navController) {
-                    composable("home") { HomeScreen() }
-                    composable("help") { HelpScreen() }
-                }
+                NavigationHost(navController = navController)
+
             }
         },
         bottomBar = {
             BottomNavigationBar(navController = navController)
-        },
+        }
     )
+}
+
+@Composable
+fun NavigationHost(navController: NavHostController) {
+    NavHost(navController = navController, startDestination = NavRoutes.Home.route) {
+        composable(NavRoutes.Home.route) {
+            HomeScreen()
+        }
+
+        composable(NavRoutes.Help.route) {
+            HelpScreen()
+        }
+    }
+}
+
+@Composable
+fun BottomNavigationBar(navController: NavHostController) {
+    NavigationBar {
+        val backStackEntry by navController.currentBackStackEntryAsState()
+        val currentRoute = backStackEntry?.destination?.route
+
+        NavBarItems.BarItems.forEach { navItem ->
+            NavigationBarItem(selected = currentRoute == navItem.route,
+                onClick = {
+                    navController.navigate(navItem.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                icon = {
+                    Icon(imageVector = navItem.image, contentDescription = navItem.title)
+                }, label = {
+                    Text(text = navItem.title)
+                })
+        }
+    }
 }

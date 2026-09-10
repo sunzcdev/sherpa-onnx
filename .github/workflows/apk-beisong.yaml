@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -27,9 +27,6 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          api-level: 34
-          ndk-version: 25.2.9512533
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -38,30 +35,33 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
 
-      - name: Build APK
+      - name: Build APK (debug-signed, 直接可装)
         working-directory: android/SherpaOnnxSimulateStreamingAsr
-        run: ./gradlew assembleRelease
-
-      - name: Sign APK
-        uses: r0adkll/sign-android-release@v1
-        with:
-          releaseDirectory: android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.ANDROID_SIGNING_KEY }}
-          alias: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_SIGNING_KEY_STORE_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --stacktrace
 
       - name: Rename APK
         run: |
-          cd android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/release
-          rm -fv signingKey.jks
-          rm -fv *.apk.idsig
-          rm -fv *-aligned.apk
-          mv -v *-signed.apk beisong-assistant.apk
+          cd android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/debug
+          ls -lh
+          cp app-debug.apk beisong-assistant.apk
           ls -lh beisong-assistant.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: beisong-assistant-apk
-          path: android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/release/beisong-assistant.apk
+          path: android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/debug/beisong-assistant.apk
+          retention-days: 14
+
+      - name: Release APK
+        if: github.ref == 'refs/heads/apk'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: beisong-v0.1.0
+          files: android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/debug/beisong-assistant.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
