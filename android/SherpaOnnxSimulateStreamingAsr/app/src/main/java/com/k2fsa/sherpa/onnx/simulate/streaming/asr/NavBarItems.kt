@@ -7,12 +7,12 @@ import androidx.compose.material.icons.filled.Info
 object NavBarItems {
     val BarItems = listOf(
         BarItem(
-            title = "Home",
+            title = "背诵",
             image = Icons.Filled.Home,
             route = "home",
         ),
         BarItem(
-            title = "Help",
+            title = "帮助",
             image = Icons.Filled.Info,
             route = "help",
         ),

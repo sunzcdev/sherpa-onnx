@@ -1,7 +1,9 @@
 <resources>
-    <string name="app_name">SimulateStreamingAsr</string>
-    <string name="start">Start</string>
-    <string name="stop">Stop</string>
-    <string name="copy">Copy</string>
-    <string name="clear">Clear</string>
+    <string name="app_name">背诵助手</string>
+    <string name="start">开始</string>
+    <string name="stop">停止</string>
+    <string name="copy">复制</string>
+    <string name="clear">清空</string>
+    <string name="nav_home">背诵</string>
+    <string name="nav_help">帮助</string>
 </resources>

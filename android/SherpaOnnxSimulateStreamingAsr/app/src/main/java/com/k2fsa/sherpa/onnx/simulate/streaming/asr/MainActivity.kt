@@ -34,6 +34,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.HelpScreen
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.HomeScreen
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.CardWhite
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.InkBlack
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.XuanPaper
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.SimulateStreamingAsrTheme
 
 const val TAG = "sherpa-onnx-sim-asr"
@@ -94,8 +97,8 @@ fun MainScreen(modifier: Modifier = Modifier) {
         topBar = {
             CenterAlignedTopAppBar(
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.primary,
+                    containerColor = CardWhite,
+                    titleContentColor = InkBlack,
                 ),
                 title = {
                     Text(
