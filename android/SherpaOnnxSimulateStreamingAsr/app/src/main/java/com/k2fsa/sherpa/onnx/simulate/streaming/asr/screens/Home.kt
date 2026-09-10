@@ -228,7 +228,7 @@ fun HomeScreen() {
 
             HomeButtonRow(
                 isStarted = isStarted, isInitialized = isInitialized,
-                onRecordingButtonClick = onRecordingButtonClick,
+                onRecordingButtonClick = ::onRecordingButtonClick,
                 onCopyButtonClick = {
                     if (resultList.isNotEmpty()) {
                         val s = resultList.mapIndexed { i, s -> "${i + 1}: $s" }
