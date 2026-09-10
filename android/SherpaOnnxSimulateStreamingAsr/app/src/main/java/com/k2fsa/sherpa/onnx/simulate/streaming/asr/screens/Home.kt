@@ -76,7 +76,7 @@ fun HomeScreen() {
         isInitialized = true
     }
 
-    val onRecordingButtonClick: () -> Unit = {
+    fun onRecordingButtonClick() {
         isStarted = !isStarted
         if (isStarted) {
             if (ActivityCompat.checkSelfPermission(
@@ -87,7 +87,7 @@ fun HomeScreen() {
                 // 仅在用户点击录音按钮时才请求权限 — 不在启动时弹窗
                 val permissions = arrayOf(Manifest.permission.RECORD_AUDIO)
                 ActivityCompat.requestPermissions(activity, permissions, REQUEST_RECORD_AUDIO_PERMISSION)
-                return@onRecordingButtonClick
+                return
             }
 
             val audioSource = MediaRecorder.AudioSource.MIC

@@ -142,11 +142,11 @@ object BeisongDiagnose {
 
     // ─── 评分 ──────────────────────────────────────────────────
     fun score(pauses: List<Pause>, repeats: List<Repeat>, errors: List<TextError>, bigGaps: List<BigGap>): Score {
-        val pausePenalty = pauses.sumOf { it.penalty }
+        val pausePenalty = pauses.sumOf { it.penalty.toDouble() }.toFloat()
         val repeatPenalty = repeats.sumOf { it.penalty }
         val errorPenalty = errors.sumOf { it.penalty }
         val bigGapPenalty = bigGaps.sumOf { it.penalty }
-        val total = (100 - pausePenalty - repeatPenalty - errorPenalty - bigGapPenalty).coerceAtLeast(0).toInt()
+        val total = (100 - pausePenalty - (repeatPenalty + errorPenalty + bigGapPenalty)).toInt().coerceAtLeast(0)
         return Score(
             total = total,
             accuracy = (100 - errorPenalty - bigGapPenalty).coerceAtLeast(0),
