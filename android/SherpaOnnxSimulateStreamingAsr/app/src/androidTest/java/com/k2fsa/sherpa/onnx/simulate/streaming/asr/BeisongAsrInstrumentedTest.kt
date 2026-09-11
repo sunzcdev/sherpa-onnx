@@ -3,6 +3,7 @@ package com.k2fsa.sherpa.onnx.simulate.streaming.asr
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -11,8 +12,10 @@ import java.io.File
 /**
  * 设备侧 E2E — 真音频→paraformer ASR→诊断.
  *
- * 前置: adb push recite_16k.wav /sdcard/Android/data/<pkg>/files/
- * (16kHz mono s16, edge-tts 合成的《静夜思》背诵)
+ * 音频源 (优先级):
+ * 1. /sdcard/Android/data/<pkg>/files/recite_16k.wav (adb push 覆盖, 开发期可选)
+ * 2. androidTest asset recite_16k.wav (随测试 APK 装机, CI 零外部依赖)
+ * (16kHz mono s16 canonical 44-byte header, edge-tts 合成的《静夜思》背诵)
  *
  * 覆盖 UI 自动化测不到的部分: native 模型加载/推理/时间戳.
  */
@@ -22,12 +25,17 @@ class BeisongAsrInstrumentedTest {
     @Test
     fun asrOnRealAudioProducesDiagnosableTokens() {
         val context: Context = ApplicationProvider.getApplicationContext()
-        val wav = File(context.getExternalFilesDir(null), "recite_16k.wav")
-        assertTrue("测试音频未推送到设备: $wav", wav.exists())
+        val override = File(context.getExternalFilesDir(null), "recite_16k.wav")
+        val bytes: ByteArray = if (override.exists()) {
+            override.readBytes()
+        } else {
+            InstrumentationRegistry.getInstrumentation().context.assets
+                .open("recite_16k.wav").use { it.readBytes() }
+        }
 
         BeisongAsr.init(context)
 
-        val samples = readWavPcm16Mono(wav)
+        val samples = readWavPcm16Mono(bytes)
         val stream = BeisongAsr.recognizer.createStream()
         val chunk = 16000 // 1s
         var off = 0
@@ -57,8 +65,7 @@ class BeisongAsrInstrumentedTest {
         assertTrue("全文正确应≥90分, 实际=${d.score.total}", d.score.total >= 90)
     }
 
-    private fun readWavPcm16Mono(f: File): FloatArray {
-        val bytes = f.readBytes()
+    private fun readWavPcm16Mono(bytes: ByteArray): FloatArray {
         // 跳 44 字节 RIFF 头（我们生成的 wav 固定; data 子块头 8 字节）
         val start = 44
         val n = (bytes.size - start) / 2

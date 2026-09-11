@@ -200,3 +200,6 @@ swiftpm
 .sherpa-onnx-xcframework-version
 # debug keystore: CI 生成并缓存，不提交
 android/SherpaOnnxSimulateStreamingAsr/debug.keystore
+
+# 背诵 App: androidTest 自包含测试音频 (asset 注入, 非发布资源)
+!android/SherpaOnnxSimulateStreamingAsr/app/src/androidTest/assets/*.wav
