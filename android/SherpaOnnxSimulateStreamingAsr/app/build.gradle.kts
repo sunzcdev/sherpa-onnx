@@ -13,6 +13,8 @@ android {
     // 注意: AGP 预注册了名为 debug 的 signingConfig，只能 getByName 改属性，
     // create("debug") 会报 "SigningConfig with that name already exists"
     signingConfigs {
+        // AGP 预注册了名为 debug 的 signingConfig，只能 getByName 改属性，
+        // create("debug") 会报 "SigningConfig with that name already exists"
         getByName("debug") {
             storeFile = file("${rootProject.projectDir}/debug.keystore")
             storePassword = "android"
@@ -25,8 +27,8 @@ android {
         applicationId = "com.k2fsa.sherpa.onnx.simulate.streaming.asr"
         minSdk = 21
         targetSdk = 34
-        versionCode = 102
-        versionName = "0.1.2"
+        versionCode = 200
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -78,7 +80,15 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     // sherpa-onnx AAR (prebuilt, avoids C++ NDK compilation in CI)
     implementation(files("libs/sherpa-onnx-1.13.7.aar"))
+    // v0.2 OCR 导入: ML Kit 中文文本识别 (bundled 模型, 离线可用)
+    implementation(libs.mlkit.text.chinese)
+    // v0.2 拍照导入: CameraX
+    implementation(libs.camerax.core)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20231013")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

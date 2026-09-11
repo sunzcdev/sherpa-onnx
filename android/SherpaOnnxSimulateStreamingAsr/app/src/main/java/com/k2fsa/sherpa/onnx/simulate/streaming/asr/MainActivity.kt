@@ -34,6 +34,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.HelpScreen
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.HomeScreen
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.ImportScreen
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.CardWhite
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.InkBlack
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.XuanPaper
@@ -49,6 +50,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        BeisongPoemStore.init(applicationContext)
         setContent {
             SimulateStreamingAsrTheme {
                 Surface(
@@ -124,7 +126,11 @@ fun MainScreen(modifier: Modifier = Modifier) {
 fun NavigationHost(navController: NavHostController) {
     NavHost(navController = navController, startDestination = NavRoutes.Home.route) {
         composable(NavRoutes.Home.route) {
-            HomeScreen()
+            HomeScreen(onNavigateImport = { navController.navigate(NavRoutes.Import.route) })
+        }
+
+        composable(NavRoutes.Import.route) {
+            ImportScreen(onClose = { navController.popBackStack() })
         }
 
         composable(NavRoutes.Help.route) {

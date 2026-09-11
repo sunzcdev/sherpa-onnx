@@ -33,14 +33,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,9 +63,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
-import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BEISONG_POEMS
+import androidx.navigation.NavHostController
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BeisongAsr
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BeisongDiagnose
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BeisongPoemStore
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.NavRoutes
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.R
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.BronzeGold
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.BronzeGoldPressed
@@ -132,7 +138,7 @@ private fun runDiagnosis(
     }
     val tokens = finalTokens.toList()
     val timestamps = finalTimestamps.toFloatArray()
-    val target = BEISONG_POEMS.first().text
+    val target = BeisongPoemStore.selected.text
     val diagnosis = BeisongDiagnose.diagnose(target, tokens, timestamps)
     val report = BeisongDiagnose.renderReport(target, tokens, timestamps, diagnosis)
     CoroutineScope(Dispatchers.Main).launch {
@@ -147,13 +153,16 @@ private fun runDiagnosis(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HomeScreen() {
+fun HomeScreen(onNavigateImport: () -> Unit = {}) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val activity = LocalContext.current as Activity
     val coroutineScope = rememberCoroutineScope()
 
-    val poem = remember { BEISONG_POEMS.first() }
+    val poems by BeisongPoemStore.poems.collectAsState()
+    val selectedId by BeisongPoemStore.selectedId.collectAsState()
+    val poem = poems.firstOrNull { it.id == selectedId } ?: poems.first()
+    var poemMenuExpanded by remember { mutableStateOf(false) }
     var isStarted by remember { mutableStateOf(false) }
     var isInitialized by remember { mutableStateOf(false) }
     var isRecordingSession by remember { mutableStateOf(false) }   // 录音线程活着(区分"等权限")
@@ -383,12 +392,42 @@ fun HomeScreen() {
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp)
             ) {
-                Text(
-                    text = "${poem.title} · ${poem.dynasty} · ${poem.author}",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = InkBlack,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box {
+                        TextButton(
+                            onClick = { poemMenuExpanded = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Text(
+                                text = "${poem.title} · ${poem.dynasty} · ${poem.author} ▾",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = InkBlack,
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = poemMenuExpanded,
+                            onDismissRequest = { poemMenuExpanded = false },
+                        ) {
+                            poems.forEach { p ->
+                                DropdownMenuItem(
+                                    text = { Text("${p.title} · ${p.author}", color = InkBlack) },
+                                    onClick = {
+                                        BeisongPoemStore.select(p.id)
+                                        poemMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    TextButton(onClick = onNavigateImport) {
+                        Text(text = "导入", color = BronzeGold, fontWeight = FontWeight.Bold)
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = poem.text,
