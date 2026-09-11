@@ -1,0 +1,15 @@
+# v0.2 Home 冒烟: 启动→模型初始化→篇目下拉可见
+# 注意: Maestro text 匹配为整串 full match, 一律用 .* 包裹做子串
+appId: com.k2fsa.sherpa.onnx.simulate.streaming.asr
+---
+- launchApp
+- assertVisible: '.*静夜思.*▾'
+- tapOn: '导入'
+- assertVisible: '.*拍照导入.*'
+- tapOn: '.*返回.*'
+- tapOn:
+    text: '.*静夜思.*▾.*'
+- assertVisible: '.*静夜思 · 李白.*'   # 下拉展开: 篇目菜单项
+- tapOn:
+    text: '.*静夜思 · 李白.*'          # 重新选中, 收起菜单
+- assertVisible: '.*床前明月光.*'
