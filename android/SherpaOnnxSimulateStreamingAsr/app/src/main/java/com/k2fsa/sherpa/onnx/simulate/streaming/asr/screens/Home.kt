@@ -75,15 +75,24 @@ import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.InkRed
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.TagGray
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.WarmYellow
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.XuanPaper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 private var audioRecord: AudioRecord? = null
 private const val sampleRateInHz = 16000
 private var samplesChannel = Channel<FloatArray>(capacity = Channel.UNLIMITED)
+// 录音协程 Job: 停止时统一 cancel, 兜底"read() 阻塞导致循环不退出"的竞态
+private var recordingJob: Job? = null
+// read() 防呆超时: 正常每 100ms 返回一次; 500ms 无返回则重查停止标志再继续
+private const val READ_TIMEOUT_MS = 500L
 
 private const val REQUEST_RECORD_AUDIO_PERMISSION = 200
 
@@ -181,25 +190,35 @@ fun HomeScreen() {
         // 每次录音换一个新通道，避免上一会话的残留样本/哨兵串进本次
         samplesChannel = Channel(capacity = Channel.UNLIMITED)
 
-        CoroutineScope(Dispatchers.IO).launch {
-            val interval = 0.1
-            val bufferSize = (interval * sampleRateInHz).toInt()
+        // ── 录音协程 (IO): read() 加 withTimeout 防阻塞, 结束时 close() 通道 ──
+        recordingJob = coroutineScope.launch(Dispatchers.IO) {
+            val bufferSize = (0.1 * sampleRateInHz).toInt()
             val buffer = ShortArray(bufferSize)
-            audioRecord?.let { it ->
-                it.startRecording()
-                while (isStarted) {
-                    val ret = audioRecord?.read(buffer, 0, buffer.size)
-                    ret?.let { n ->
-                        val samples = FloatArray(n) { buffer[it] / 32768.0f }
+            audioRecord?.let { rec ->
+                rec.startRecording()
+                try {
+                    while (isStarted) {
+                        val ret = try {
+                            withTimeout(READ_TIMEOUT_MS) {
+                                rec.read(buffer, 0, buffer.size)
+                            }
+                        } catch (_: TimeoutCancellationException) {
+                            // 超时: 重查 isStarted 后继续, 防止 read() 永久阻塞
+                            continue
+                        }
+                        if (ret == null || ret <= 0) break
+                        val samples = FloatArray(ret) { buffer[it] / 32768.0f }
                         samplesChannel.send(samples)
                     }
+                } finally {
+                    samplesChannel.close()  // 通知处理协程: 不再有新数据
                 }
-                samplesChannel.send(FloatArray(0))
             }
         }
 
-        CoroutineScope(Dispatchers.Default).launch {
-            var buffer = arrayListOf<Float>()
+        // ── 处理协程 (Default): receive() + withTimeout, 通道关闭时退出 ──
+        coroutineScope.launch(Dispatchers.Default) {
+            var buf = arrayListOf<Float>()
             var offset = 0
             val windowSize = 512
             var isSpeechStarted = false
@@ -208,13 +227,20 @@ fun HomeScreen() {
             var added = false
             var speechStartOffset = 0
 
-            while (isStarted) {
-                for (s in samplesChannel) {
-                    if (s.isEmpty()) break
-                    buffer.addAll(s.toList())
-                    while (offset + windowSize < buffer.size) {
+            try {
+                while (isStarted) {
+                    val s = try {
+                        withTimeout(READ_TIMEOUT_MS) { samplesChannel.receive() }
+                    } catch (_: TimeoutCancellationException) {
+                        continue  // 无数据超时, 重查 isStarted
+                    } catch (_: ClosedReceiveChannelException) {
+                        break  // 通道已关闭, 退出循环
+                    }
+                    if (s.isEmpty()) continue
+                    buf.addAll(s.toList())
+                    while (offset + windowSize < buf.size) {
                         BeisongAsr.vad.acceptWaveform(
-                            buffer.subList(offset, offset + windowSize).toFloatArray()
+                            buf.subList(offset, offset + windowSize).toFloatArray()
                         )
                         offset += windowSize
                         if (!isSpeechStarted && BeisongAsr.vad.isSpeechDetected()) {
@@ -227,7 +253,7 @@ fun HomeScreen() {
                     if (isSpeechStarted && elapsed > 200) {
                         val stream = BeisongAsr.recognizer.createStream()
                         stream.acceptWaveform(
-                            buffer.subList(speechStartOffset, offset).toFloatArray(),
+                            buf.subList(speechStartOffset, offset).toFloatArray(),
                             sampleRateInHz
                         )
                         BeisongAsr.recognizer.decode(stream)
@@ -254,11 +280,10 @@ fun HomeScreen() {
                         BeisongAsr.recognizer.decode(stream)
                         val result = BeisongAsr.recognizer.getResult(stream)
                         stream.release()
-                        // Step 0: 段最终结果累积(全局时基, 见文件头注释)
                         accumulateSegment(result.tokens.toList(), result.timestamps.toList(), seg.start)
                         isSpeechStarted = false
                         BeisongAsr.vad.pop()
-                        buffer = arrayListOf()
+                        buf = arrayListOf()
                         offset = 0
                         if (lastText.isNotBlank()) {
                             if (added && resultList.isNotEmpty()) {
@@ -273,8 +298,11 @@ fun HomeScreen() {
                         }
                     }
                 }
+            } catch (_: CancellationException) {
+                // 协程被取消(停止时), 跳到收尾
             }
-            // 收尾: flush 未闭合的尾段，排空后统一诊断 — 用真实累积数据出分
+
+            // 收尾: flush 未闭合的尾段，排空后统一诊断
             BeisongAsr.vad.flush()
             while (!BeisongAsr.vad.empty()) {
                 val seg = BeisongAsr.vad.front()
@@ -308,7 +336,6 @@ fun HomeScreen() {
     }
 
     fun onRecordingButtonClick() {
-        if (isRecordingSession) return   // 停止收尾(尾段解码+诊断)期间防重入
         isStarted = !isStarted
         if (isStarted) {
             diagnosis = null
@@ -327,10 +354,11 @@ fun HomeScreen() {
             }
             startRecording()
         } else {
+            // 停止: 先释放硬件解除 read() 阻塞, 再翻转标志位
             audioRecord?.stop()
             audioRecord?.release()
             audioRecord = null
-            // 诊断由识别协程收尾时执行(排空通道+flush尾段后)，见 startRecording()
+            recordingJob?.cancel()  // 取消录音协程 → close() 通道 → 处理协程收到 ClosedReceiveChannelException 退出
         }
     }
 
