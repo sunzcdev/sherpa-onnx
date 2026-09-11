@@ -95,5 +95,5 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
           files: android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/debug/beisong-assistant.apk
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
