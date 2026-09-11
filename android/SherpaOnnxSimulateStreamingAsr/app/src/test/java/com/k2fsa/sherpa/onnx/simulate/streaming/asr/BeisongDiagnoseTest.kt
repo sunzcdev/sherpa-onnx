@@ -44,6 +44,17 @@ class BeisongDiagnoseTest {
     }
 
     @Test
+    fun punctuationInTargetNeverPenalized() {
+        // 回归: ASR tokens 永远不含标点，若目标文本「，。」不剥离会被判漏字，
+        // 全文背诵最高只剩 88 分（设备注入测试 2026-09-11 抓到）。
+        val target = BEISONG_TARGET_TEXT // 带标点
+        val tokens = tokenize(target).filter { it.single().code in 0x4E00..0x9FFF }
+        val ts = FloatArray(tokens.size) { 0.3f * (it + 1) }
+        val d = BeisongDiagnose.diagnose(target, tokens, ts)
+        assertTrue("无标点 tokens 对带标点目标应满分, 实际=${d.score.total}", d.score.total == 100)
+    }
+
+    @Test
     fun renderReportAnnotatesAllLegendTypes() {
         val target = BEISONG_TARGET_TEXT
         val recited = "床前名月光，疑是地上霜。举头望明月，举头望明月，低头思故乡。"

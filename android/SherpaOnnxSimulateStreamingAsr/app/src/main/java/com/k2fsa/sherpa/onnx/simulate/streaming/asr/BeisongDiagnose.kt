@@ -179,12 +179,20 @@ object BeisongDiagnose {
         else -> 0
     }
 
+    // ─── 归一化 ────────────────────────────────────────────────
+    // ASR tokens 只含汉字/字词，目标篇目带「，。、」等标点。不归一化会让
+    // 标点被 LCS 判成 missing（每个扣 3 分），全文背诵最高只能拿 88 分。
+    // 真机同样命中此 bug（设备注入测试 2026-09-11 实测抓到）。
+    fun normalize(text: String): String =
+        text.filter { it.code in 0x4E00..0x9FFF || it.isLetterOrDigit() }
+
     // ─── 主入口 ────────────────────────────────────────────────
     fun diagnose(targetText: String, tokens: List<String>, timestamps: FloatArray): Diagnosis {
-        val recited = tokens.joinToString("")
+        val target = normalize(targetText)
+        val recited = normalize(tokens.joinToString(""))
         val pauses = detectPauses(tokens, timestamps)
         val repeats = detectRepeats(recited)
-        val errors = alignText(targetText, recited, repeats)
+        val errors = alignText(target, recited, repeats)
         val bigGaps = detectBigGap(errors)
         val sc = score(pauses, repeats, errors, bigGaps)
         val targets = topTargets(pauses, repeats, errors, bigGaps)
@@ -203,7 +211,8 @@ object BeisongDiagnose {
     // FR-008 标注图例: 红=错字/漏字, 灰删除线=多字, 黄=停顿, 金下划线=回读
     fun renderReport(targetText: String, tokens: List<String>, timestamps: FloatArray,
                      diagnosis: Diagnosis): AnnotatedString {
-        val recited = tokens.joinToString("")
+        val target = normalize(targetText)
+        val recited = normalize(tokens.joinToString(""))
         // 每个字符的时间戳(由 token 展开; token 可能是子词多字符)
         val charTs = HashMap<Int, Float>()
         run {
@@ -227,7 +236,7 @@ object BeisongDiagnose {
         val errorStyle = SpanStyle(color = Color(0xFFC0392B), fontWeight = FontWeight.Bold)
         val extraStyle = SpanStyle(color = Color(0xFF8A7F70), textDecoration = TextDecoration.LineThrough)
         val repeatStyle = SpanStyle(color = Color(0xFF2C2416), textDecoration = TextDecoration.Underline, background = Color(0x33C8A45C))
-        val (_, ops) = lcsDiff(targetText, recited)
+        val (_, ops) = lcsDiff(target, recited)
         return buildAnnotatedString {
             var rIdx = 0
             fun pauseBefore(): Float {
