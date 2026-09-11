@@ -7,11 +7,23 @@ android {
     namespace = "com.k2fsa.sherpa.onnx.simulate.streaming.asr"
     compileSdk = 34
 
+    // 固定 debug 签名: 每次 CI 构建用同一个 keystore，保证签名一致
+    // 否则 GitHub Actions runner 每次都生成新的 ~/.android/debug.keystore，
+    // 导致 INSTALL_FAILED_UPDATE_INCOMPATIBLE
+    signingConfigs {
+        create("debug") {
+            storeFile = file("${rootProject.projectDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "debug"
+            keyPassword = "android"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.k2fsa.sherpa.onnx.simulate.streaming.asr"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
+        versionCode = 100
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -21,6 +33,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(

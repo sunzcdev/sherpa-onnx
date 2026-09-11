@@ -1,4 +1,4 @@
-name: apk-beisong
+name: beisong-assistant-apk
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  apk_beisong:
+  beisong_assistant_apk:
     runs-on: ubuntu-latest
     name: Build 智能背诵助手 APK
 
@@ -36,6 +36,28 @@ jobs:
             ~/.gradle/wrapper
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle.kts', '**/gradle.properties') }}
           restore-keys: ${{ runner.os }}-gradle-
+
+      - name: Cache debug keystore
+        uses: actions/cache@v4
+        with:
+          path: android/SherpaOnnxSimulateStreamingAsr/debug.keystore
+          key: ${{ runner.os }}-debug-keystore
+          restore-keys: |
+            ${{ runner.os }}-debug-keystore
+
+      - name: Generate debug keystore if missing
+        working-directory: android/SherpaOnnxSimulateStreamingAsr
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkey -v \
+              -keystore debug.keystore \
+              -alias debug \
+              -keyalg RSA -keysize 2048 \
+              -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Debug,OU=Dev,O=Beisong,L=Shenzhen,ST=Guangdong,C=CN" \
+              -sigalg SHA256withRSA
+          fi
 
       - name: Build APK (debug-signed, 直接可装)
         working-directory: android/SherpaOnnxSimulateStreamingAsr
@@ -63,5 +85,5 @@ jobs:
         with:
           tag_name: beisong-v0.1.0
           files: android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/debug/beisong-assistant.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          env:
+            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

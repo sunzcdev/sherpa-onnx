@@ -198,3 +198,5 @@ vits-inflect-*-v2
 assets-2
 swiftpm
 .sherpa-onnx-xcframework-version
+# debug keystore: CI 生成并缓存，不提交
+android/SherpaOnnxSimulateStreamingAsr/debug.keystore
