@@ -10,8 +10,10 @@ android {
     // 固定 debug 签名: 每次 CI 构建用同一个 keystore，保证签名一致
     // 否则 GitHub Actions runner 每次都生成新的 ~/.android/debug.keystore，
     // 导致 INSTALL_FAILED_UPDATE_INCOMPATIBLE
+    // 注意: AGP 预注册了名为 debug 的 signingConfig，只能 getByName 改属性，
+    // create("debug") 会报 "SigningConfig with that name already exists"
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = file("${rootProject.projectDir}/debug.keystore")
             storePassword = "android"
             keyAlias = "debug"
