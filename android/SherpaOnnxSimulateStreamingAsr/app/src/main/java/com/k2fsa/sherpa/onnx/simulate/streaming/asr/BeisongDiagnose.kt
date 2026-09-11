@@ -183,8 +183,10 @@ object BeisongDiagnose {
     // ASR tokens 只含汉字/字词，目标篇目带「，。、」等标点。不归一化会让
     // 标点被 LCS 判成 missing（每个扣 3 分），全文背诵最高只能拿 88 分。
     // 真机同样命中此 bug（设备注入测试 2026-09-11 实测抓到）。
+    // v0.2.1 R3.3: 英文适配 — lowercase 折叠 (whisper "Hello" vs 书本 "hello")；
+    // 撇号变体 (’'′) 非字母数字已被 filter 剥掉, don't/don’t → dont 自动对齐。
     fun normalize(text: String): String =
-        text.filter { it.code in 0x4E00..0x9FFF || it.isLetterOrDigit() }
+        text.filter { it.code in 0x4E00..0x9FFF || it.isLetterOrDigit() }.lowercase()
 
     // ─── 主入口 ────────────────────────────────────────────────
     fun diagnose(targetText: String, tokens: List<String>, timestamps: FloatArray): Diagnosis {

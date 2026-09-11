@@ -1,0 +1,32 @@
+# v0.2.1 书库冒烟: 分类chip切换 → 搜语文必背 → 导入 → 英语单元导入
+appId: com.k2fsa.sherpa.onnx.simulate.streaming.asr
+android:
+  ignoreKeyboardTiles: true
+---
+- launchApp
+- tapOn: '导入'
+- tapOn: '.*书 库.*'
+# 分类 chips 存在: 全部/诗词/语文/英语/单词表
+- assertVisible: '单词表'
+# 切「语文」chip → 搜四上必背《题西林壁》
+- tapOn: '语文'
+- tapOn: '.*搜索标题.*'
+- inputText: '庐山真面目'
+- hideKeyboard
+- assertVisible: '.*题西林壁.*'
+- tapOn:
+    text: '.*题西林壁.*'
+- assertVisible: '.*已导入「古诗三首·题西林壁」.*'
+# 回书库 → 切「英语」chip → 搜索定位 Unit 5 主句型 → 导入
+# (列表懒渲染, Unit 5 在第5卡超出可见区 → 用搜索精确命中, 与 flow02 同法)
+- tapOn: '导入'
+- tapOn: '.*书 库.*'
+- tapOn: '英语'
+- assertVisible: '.*Unit 1.*主句型.*'
+- tapOn: '.*搜索标题.*'
+- inputText: 'temperature'
+- hideKeyboard
+- assertVisible: '.*Unit 5.*主句型.*'
+- tapOn:
+    text: '.*Unit 5.*主句型.*'
+- assertVisible: '.*已导入.*'

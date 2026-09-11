@@ -19,6 +19,9 @@ data class BeisongPoem(
     val dynasty: String,
     val text: String,
     val source: String = "builtin", // builtin | ocr | library
+    // v0.2.1 书库分类: poem(古诗) | yuwen-4a(四上语文) | english-4a(四上英语课文) | words-4a(四上单词表)
+    val category: String = "poem",
+    val lang: String = "zh", // zh | en — 决定 ASR 模型与 normalize 大小写策略
 )
 
 /** v0.1 兼容: 内置篇目常量 (JVM 单测/instrumented 测试仍引用 BEISONG_TARGET_TEXT) */
@@ -113,6 +116,8 @@ object BeisongPoemStore {
                     dynasty = o.optString("dynasty"),
                     text = o.getString("text"),
                     source = o.optString("source", "ocr"),
+                    category = o.optString("category", "poem"),
+                    lang = o.optString("lang", "zh"),
                 )
             }
             _poems.value = BUILTIN_POEMS + user
@@ -138,6 +143,8 @@ object BeisongPoemStore {
                         .put("dynasty", p.dynasty)
                         .put("text", p.text)
                         .put("source", p.source)
+                        .put("category", p.category)
+                        .put("lang", p.lang)
                 )
             }
             prefs.edit().putString(KEY_USER, arr.toString()).apply()

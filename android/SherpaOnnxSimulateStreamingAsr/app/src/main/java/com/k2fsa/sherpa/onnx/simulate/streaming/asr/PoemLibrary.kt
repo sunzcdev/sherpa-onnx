@@ -12,35 +12,40 @@ object PoemLibrary {
     @Volatile
     private var cache: List<BeisongPoem>? = null
 
-    /** 从 assets/poems.json 加载 (进程内缓存); 失败回退内置静夜思 */
+    /** v0.2.1 书库分类 Tab 定义 (展示名, category 前缀; poem 为默认/古诗) */
+    val LIBRARY_TABS: List<Pair<String, String>> = listOf(
+        "全部" to "",
+        "诗词" to "poem",
+        "语文" to "yuwen",
+        "英语" to "english",
+        "单词表" to "words",
+    )
+
+    /** 按 Tab 前缀过滤 (category 以 prefix 开头; 空前缀=全部) */
+    fun filterCategory(poems: List<BeisongPoem>, prefix: String): List<BeisongPoem> {
+        if (prefix.isEmpty()) return poems
+        return poems.filter { it.category.startsWith(prefix) }
+    }
+
+    /** 从 assets 加载 poems.json + books.json (v0.2.1 新增), 合并缓存 */
     fun load(context: Context): List<BeisongPoem> {
         cache?.let { return it }
-        return try {
-            val json = context.assets.open("poems.json").bufferedReader().use { it.readText() }
-            val arr = org.json.JSONArray(json)
-            val poems = ArrayList<BeisongPoem>(arr.length())
-            for (i in 0 until arr.length()) {
-                val o = arr.getJSONObject(i)
-                poems.add(
-                    BeisongPoem(
-                        id = "lib-${i + 1}",
-                        title = o.getString("title"),
-                        author = o.optString("author", "佚名"),
-                        dynasty = o.optString("dynasty", ""),
-                        text = o.getString("text"),
-                        source = "library",
-                    )
-                )
+        val poems = ArrayList<BeisongPoem>()
+        for ((file, defaultCat) in listOf("poems.json" to "poem", "books.json" to "yuwen-4a")) {
+            try {
+                val json = context.assets.open(file).bufferedReader().use { it.readText() }
+                poems.addAll(parsePoemsJson(json, idPrefix = if (file == "poems.json") "lib" else "book", defaultCategory = defaultCat))
+            } catch (_: Exception) {
+                // books.json 缺失不致命; poems.json 缺失由下方兜底
             }
-            if (poems.isEmpty()) throw IllegalStateException("empty poems.json")
-            cache = poems
-            poems
-        } catch (_: Exception) {
-            // assets 损坏不阻塞: 回退内置篇目
+        }
+        if (poems.isEmpty()) {
             val fallback = listOf(BUILTIN_POEMS.first())
             cache = fallback
-            fallback
+            return fallback
         }
+        cache = poems
+        return poems
     }
 
     /**
@@ -60,20 +65,26 @@ object PoemLibrary {
     fun search(context: Context, query: String): List<BeisongPoem> =
         search(load(context), query)
 
-    /** JSON 数组 → 列表 (导出给 JVM 测试用) */
-    fun parsePoemsJson(json: String): List<BeisongPoem> {
+    /** JSON 数组 → 列表 (导出给 JVM 测试用); 缺省字段向后兼容 v0.2 */
+    fun parsePoemsJson(
+        json: String,
+        idPrefix: String = "lib",
+        defaultCategory: String = "poem",
+    ): List<BeisongPoem> {
         val arr = org.json.JSONArray(json)
         val out = ArrayList<BeisongPoem>(arr.length())
         for (i in 0 until arr.length()) {
             val o: JSONObject = arr.getJSONObject(i)
             out.add(
                 BeisongPoem(
-                    id = "lib-${i + 1}",
+                    id = "$idPrefix-${i + 1}",
                     title = o.getString("title"),
                     author = o.optString("author", "佚名"),
                     dynasty = o.optString("dynasty", ""),
                     text = o.getString("text"),
                     source = "library",
+                    category = o.optString("category", defaultCategory),
+                    lang = o.optString("lang", "zh"),
                 )
             )
         }

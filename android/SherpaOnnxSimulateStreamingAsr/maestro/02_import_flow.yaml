@@ -5,7 +5,7 @@ android:
 ---
 - launchApp
 - tapOn: '导入'
-- tapOn: '.*诗词库.*'
+- tapOn: '.*书 库.*'
 - tapOn: '.*搜索标题.*'
 - inputText: '春眠'
 - hideKeyboard

@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,6 +41,7 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -260,13 +262,13 @@ fun HomeScreen(onNavigateImport: () -> Unit = {}) {
                     }
                     val elapsed = System.currentTimeMillis() - startTime
                     if (isSpeechStarted && elapsed > 200) {
-                        val stream = BeisongAsr.recognizer.createStream()
+                        val stream = BeisongAsr.activeRecognizer.createStream()
                         stream.acceptWaveform(
                             buf.subList(speechStartOffset, offset).toFloatArray(),
                             sampleRateInHz
                         )
-                        BeisongAsr.recognizer.decode(stream)
-                        val result = BeisongAsr.recognizer.getResult(stream)
+                        BeisongAsr.activeRecognizer.decode(stream)
+                        val result = BeisongAsr.activeRecognizer.getResult(stream)
                         stream.release()
                         lastText = result.text
                         if (lastText.isNotBlank()) {
@@ -284,10 +286,10 @@ fun HomeScreen(onNavigateImport: () -> Unit = {}) {
                     }
                     while (!BeisongAsr.vad.empty()) {
                         val seg = BeisongAsr.vad.front()
-                        val stream = BeisongAsr.recognizer.createStream()
+                        val stream = BeisongAsr.activeRecognizer.createStream()
                         stream.acceptWaveform(seg.samples, sampleRateInHz)
-                        BeisongAsr.recognizer.decode(stream)
-                        val result = BeisongAsr.recognizer.getResult(stream)
+                        BeisongAsr.activeRecognizer.decode(stream)
+                        val result = BeisongAsr.activeRecognizer.getResult(stream)
                         stream.release()
                         accumulateSegment(result.tokens.toList(), result.timestamps.toList(), seg.start)
                         isSpeechStarted = false
@@ -315,10 +317,10 @@ fun HomeScreen(onNavigateImport: () -> Unit = {}) {
             BeisongAsr.vad.flush()
             while (!BeisongAsr.vad.empty()) {
                 val seg = BeisongAsr.vad.front()
-                val stream = BeisongAsr.recognizer.createStream()
+                val stream = BeisongAsr.activeRecognizer.createStream()
                 stream.acceptWaveform(seg.samples, sampleRateInHz)
-                BeisongAsr.recognizer.decode(stream)
-                val result = BeisongAsr.recognizer.getResult(stream)
+                BeisongAsr.activeRecognizer.decode(stream)
+                val result = BeisongAsr.activeRecognizer.getResult(stream)
                 stream.release()
                 accumulateSegment(result.tokens.toList(), result.timestamps.toList(), seg.start)
                 BeisongAsr.vad.pop()
@@ -397,16 +399,19 @@ fun HomeScreen(onNavigateImport: () -> Unit = {}) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box {
+                    Box(modifier = Modifier.weight(1f)) {
                         TextButton(
                             onClick = { poemMenuExpanded = true },
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier.widthIn(max = 300.dp),
                         ) {
                             Text(
                                 text = "${poem.title} · ${poem.dynasty} · ${poem.author} ▾",
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = InkBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
                         DropdownMenu(

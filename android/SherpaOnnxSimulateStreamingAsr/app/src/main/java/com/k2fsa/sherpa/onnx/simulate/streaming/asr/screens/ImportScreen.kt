@@ -13,6 +13,8 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,7 +86,7 @@ import java.util.UUID
 import kotlin.coroutines.resume
 
 /**
- * v0.2 内容导入: 「拍照导入」(CameraX + ML Kit 中文 OCR) / 「诗词库」(内置 90+ 首)
+ * v0.2 内容导入: 「拍照导入」(CameraX + ML Kit 中文 OCR) / 「书库」(内置 90+ 首)
  * 两条路径最终都落到 BeisongPoemStore.add() — 与背诵页共享同一篇目状态。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -132,7 +134,7 @@ fun ImportScreen(onClose: () -> Unit) {
             Tab(
                 selected = tab == 1,
                 onClick = { tab = 1; confirm = null },
-                text = { Text("诗词库", fontSize = 15.sp) },
+                text = { Text("书 库", fontSize = 15.sp) },
             )
         }
 
@@ -222,7 +224,7 @@ private fun CameraImport(onOcrResult: (String) -> Unit) {
     if (!hasPermission) {
         ImportHint(
             title = "需要相机权限",
-            detail = "拍照导入需要使用相机。也可以切到「诗词库」直接选篇目。",
+            detail = "拍照导入需要使用相机。也可以切到「书库」直接选篇目。",
             action = "授予权限",
             onAction = { permissionLauncher.launch(Manifest.permission.CAMERA) },
         )
@@ -264,11 +266,11 @@ private fun CameraImport(onOcrResult: (String) -> Unit) {
                                     )
                                     previewBound = true
                                 } catch (e: Exception) {
-                                    errorMsg = "相机启动失败，可切到「诗词库」导入"
+                                    errorMsg = "相机启动失败，可切到「书库」导入"
                                 }
                             }, ContextCompat.getMainExecutor(ctx))
                         } catch (_: Exception) {
-                            errorMsg = "相机暂不可用，可切到「诗词库」导入"
+                            errorMsg = "相机暂不可用，可切到「书库」导入"
                         }
                     }
                 },
@@ -291,7 +293,7 @@ private fun CameraImport(onOcrResult: (String) -> Unit) {
                     val raw = captureAndRecognize(context, imageCapture, lifecycleOwner)
                     capturing = false
                     if (raw == null) {
-                        Toast.makeText(context, "拍照或识别失败，请重试或改用诗词库", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "拍照或识别失败，请重试或改用书库", Toast.LENGTH_LONG).show()
                     } else {
                         onOcrResult(raw)
                     }
@@ -325,7 +327,7 @@ private fun CameraImport(onOcrResult: (String) -> Unit) {
     androidx.compose.runtime.LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(5000)
         if (!previewBound && errorMsg == null && cameraProviderRef.value == null) {
-            errorMsg = "相机暂不可用，可切到「诗词库」导入"
+            errorMsg = "相机暂不可用，可切到「书库」导入"
         }
     }
 }
@@ -401,6 +403,9 @@ private fun ConfirmImport(
     var author by remember { mutableStateOf(parsed.author) }
     var dynasty by remember { mutableStateOf(parsed.dynasty) }
     var body by remember { mutableStateOf(parsed.body) }
+    // R1.5: 清洗有改动时默认展示 diff，用户可展开/收起
+    val diffLines = remember { if (parsed.raw.isNotBlank()) TextSegmenter.diff(parsed.raw) else emptyList() }
+    var showDiff by remember { mutableStateOf(diffLines.size > 1) }
 
     Column(
         modifier = Modifier
@@ -415,6 +420,35 @@ private fun ConfirmImport(
             color = InkBlack,
         )
         Spacer(modifier = Modifier.height(12.dp))
+
+        if (diffLines.size > 1) {
+            TextButton(
+                onClick = { showDiff = !showDiff },
+            ) {
+                Text(
+                    if (showDiff) "收起原文对照" else "查看原文对照 (${diffLines.count { it.kind == "raw" }} 处清洗)",
+                    fontSize = 13.sp,
+                    color = BronzeGoldPressed,
+                )
+            }
+            if (showDiff) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = CardWhite),
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        diffLines.forEach { d ->
+                            when (d.kind) {
+                                "raw" -> Text("− ${d.text}", fontSize = 12.sp, color = InkRed)
+                                "clean" -> Text("+ ${d.text}", fontSize = 12.sp, color = InkBlackSoft)
+                                else -> Text("  ${d.text}", fontSize = 12.sp, color = TagGray)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+        }
 
         OutlinedTextField(
             value = title,
@@ -471,6 +505,8 @@ private fun ConfirmImport(
                             dynasty = dynasty.ifBlank { "" },
                             text = body.trim(),
                             source = "ocr",
+                            // 自动判定语言: 拉丁字母占比 >60% → en (英文课本拍照走 whisper 评分)
+                            lang = TextSegmenter.detectLang(body),
                         )
                     )
                 },
@@ -489,30 +525,52 @@ private fun ConfirmImport(
     }
 }
 
-// ─── 诗词库: 搜索 → 点选导入 ─────────────────────────────────────────────
+// ─── 书库: 搜索 → 点选导入 ─────────────────────────────────────────────
 
 @Composable
 private fun LibraryTab(onImport: (BeisongPoem) -> Unit) {
     val context = LocalContext.current
     val all = remember { PoemLibrary.load(context) }
     var query by remember { mutableStateOf("") }
-    val results = remember(query) { PoemLibrary.search(all, query) }
+    var catIdx by remember { mutableStateOf(0) }
+    val catPrefix = PoemLibrary.LIBRARY_TABS[catIdx].second
+    val scoped = remember(catPrefix) { PoemLibrary.filterCategory(all, catPrefix) }
+    val results = remember(query, scoped) { PoemLibrary.search(scoped, query) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
+        // v0.2.1 分类过滤 chips: 全部/诗词/语文/英语/单词表
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            PoemLibrary.LIBRARY_TABS.forEachIndexed { i, (label, _) ->
+                val sel = i == catIdx
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (sel) BronzeGold else CardWhite)
+                        .border(1.dp, if (sel) BronzeGold else TagGray, RoundedCornerShape(14.dp))
+                        .clickable { catIdx = i }
+                        .padding(horizontal = 12.dp, vertical = 5.dp),
+                ) {
+                    Text(label, fontSize = 13.sp, color = if (sel) InkBlack else InkBlackSoft)
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(10.dp))
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            label = { Text("搜索标题 / 作者 / 诗句") },
+            label = { Text("搜索标题 / 作者 / 正文") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            "共 ${all.size} 首 · 命中 ${results.size} 首",
+            "共 ${scoped.size} 篇 · 命中 ${results.size} 篇",
             fontSize = 12.sp,
             color = TagGray,
         )
