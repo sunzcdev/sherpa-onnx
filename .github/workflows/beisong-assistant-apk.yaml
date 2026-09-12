@@ -89,6 +89,24 @@ jobs:
           echo "tag=beisong-v$V" >> "$GITHUB_OUTPUT"
           echo "release tag will be beisong-v$V"
 
+      - name: Purge broken release metadata (self-heal)
+        if: github.ref == 'refs/heads/apk'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 若同名 release 已存在但 target_commitish != apk (历史误建/复用),
+          # 整个删掉, 让下一步 softprops 以正确 tag/target/body 重建
+          V=$(grep -oP 'versionName = "\K[0-9.]+' android/SherpaOnnxSimulateStreamingAsr/app/build.gradle.kts)
+          REL=$(curl -sf -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/tags/beisong-v$V") || { echo "no existing release"; exit 0; }
+          TGT=$(echo "$REL" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("target_commitish",""))')
+          if [ "$TGT" != "apk" ]; then
+            ID=$(echo "$REL" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
+            echo "release $ID target=$TGT != apk → delete for rebuild"
+            curl -sf -X DELETE -H "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/$ID" > /dev/null
+          fi
+
       - name: Release APK
         if: github.ref == 'refs/heads/apk'
         uses: softprops/action-gh-release@v2
