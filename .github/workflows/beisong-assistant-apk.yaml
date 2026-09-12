@@ -94,6 +94,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: apk
+          name: beisong-assistant ${{ steps.ver.outputs.tag }}
+          body: |
+            背诵助手 APK (debug 签名, 直接可装)
+            - v0.2.1: 课本书库 (四上语文/PEP英语/单词表) + OCR 清洗 diff + 英文 whisper-tiny.en 双模型 ASR
           files: android/SherpaOnnxSimulateStreamingAsr/app/build/outputs/apk/debug/beisong-assistant.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
