@@ -1,0 +1,27 @@
+# v0.2.2 HOTFIX: 拍照导入独立全屏页 — 遮挡 bug 修复 + redroid 降级路径
+# redroid 无 camera provider: 打开相机页应显示降级文案而非崩溃, 返回可退出
+appId: com.k2fsa.sherpa.onnx.simulate.streaming.asr
+android:
+  ignoreKeyboardTiles: true
+---
+- launchApp
+- tapOn: '导入'
+- assertVisible: '拍照导入课本'          # 纯入口引导页 (无内嵌预览)
+- assertVisible: '打开相机'
+- assertVisible: '改用书库选篇目'
+- tapOn: '打开相机'
+# 相机全屏页: redroid 无 camera provider → 5s 兜底出降级提示 (或绑定异常即出)
+- waitForAnimationToEnd
+- assertVisible: '相机暂不可用.*|相机启动失败.*'
+  # ↑ Maestro 整串匹配: 两条文案任一命中即可, 用 | 分支
+- tapOn: '返回导入页'
+- assertVisible: '打开相机'              # 回到入口引导页, 不崩溃
+# 不回归: 书库导入仍可用
+- tapOn: '.*书 库.*'
+- tapOn: '.*搜索标题.*'
+- inputText: '春眠'
+- hideKeyboard
+- assertVisible: '.*春晓.*'
+- tapOn:
+    text: '.*春晓.*'
+- assertVisible: '.*已导入「春晓」.*'

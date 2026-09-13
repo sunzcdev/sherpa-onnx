@@ -4,6 +4,7 @@
     maestro test --device <serial> 01_home_smoke.yaml
     maestro test --device <serial> 02_import_flow.yaml
     maestro test --device <serial> 03_library_categories.yaml   # v0.2.1 书库分类
+    maestro test --device <serial> 04_camera_page.yaml          # v0.2.2 相机专页降级
 
 前置: 安装 debug/release APK。**每次 pm clear 后必须重授相机权限**, 否则
 01 会卡在系统权限弹窗 ("Allow 背诵助手 to take pictures...") 上误报 FAILED:

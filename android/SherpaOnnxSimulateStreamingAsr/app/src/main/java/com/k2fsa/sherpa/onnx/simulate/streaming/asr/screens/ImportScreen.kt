@@ -1,16 +1,6 @@
 package com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.net.Uri
 import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageCapture
-import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,26 +34,18 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.LifecycleOwner
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BeisongPoem
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.BeisongPoemStore
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.PoemLibrary
@@ -70,20 +53,13 @@ import com.k2fsa.sherpa.onnx.simulate.streaming.asr.TextSegmenter
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.BronzeGold
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.BronzeGoldPressed
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.CardWhite
-import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.DividerWarm
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.InkBlack
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.InkBlackSoft
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.InkRed
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.TagGray
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.ui.theme.XuanPaper
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import java.io.File
 import java.util.UUID
-import kotlin.coroutines.resume
 
 /**
  * v0.2 内容导入: 「拍照导入」(CameraX + ML Kit 中文 OCR) / 「书库」(内置 90+ 首)
@@ -91,13 +67,11 @@ import kotlin.coroutines.resume
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ImportScreen(onClose: () -> Unit) {
+fun ImportScreen(onClose: () -> Unit, onOpenCamera: () -> Unit) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf(0) }
-    // OCR 结果确认态: 非 null 时两页都切换到可编辑确认
-    var confirm by remember { mutableStateOf<TextSegmenter.ParsedPoem?>(null) }
 
     Column(
         modifier = Modifier
@@ -128,40 +102,22 @@ fun ImportScreen(onClose: () -> Unit) {
         ) {
             Tab(
                 selected = tab == 0,
-                onClick = { tab = 0; confirm = null },
+                onClick = { tab = 0 },
                 text = { Text("拍照导入", fontSize = 15.sp) },
             )
             Tab(
                 selected = tab == 1,
-                onClick = { tab = 1; confirm = null },
+                onClick = { tab = 1 },
                 text = { Text("书 库", fontSize = 15.sp) },
             )
         }
 
-        when {
-            confirm != null -> {
-                ConfirmImport(
-                    parsed = confirm!!,
-                    onCancel = { confirm = null },
-                    onSave = { poem ->
-                        val added = BeisongPoemStore.add(poem)
-                        Toast.makeText(
-                            context,
-                            if (added) "已导入「${poem.title}」" else "篇目已存在，已选中",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        onClose()
-                    },
-                )
-            }
-            tab == 0 -> CameraImport(
-                onOcrResult = { raw ->
-                    if (raw.isBlank()) {
-                        Toast.makeText(context, "未识别到文字，请对准诗文重试", Toast.LENGTH_LONG).show()
-                    } else {
-                        confirm = TextSegmenter.parsePoem(raw)
-                    }
-                },
+        when (tab) {
+            // v0.2.2: 相机预览搬独立全屏页 (CameraScreen), 此处纯入口 —
+            // 修复 PreviewView 内嵌 Tab 布局遮挡标签区 (surface z-order)
+            0 -> CameraEntry(
+                onOpenCamera = onOpenCamera,
+                onPickFromLibrary = { tab = 1 },
             )
             else -> LibraryTab(
                 onImport = { poem ->
@@ -180,221 +136,54 @@ fun ImportScreen(onClose: () -> Unit) {
     }
 }
 
-// ─── 拍照导入: 权限 → CameraX 预览 → 拍照 → ML Kit OCR ───────────────────
+// ─── 拍照导入入口 (v0.2.2: 预览在独立全屏页, 此处纯引导) ─────────────────
 
 @Composable
-private fun CameraImport(onOcrResult: (String) -> Unit) {
-    val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val coroutineScope = rememberCoroutineScope()
-
-    var hasPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED
-        )
-    }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        hasPermission = granted
-        if (!granted) {
-            Toast.makeText(context, "需要相机权限才能拍照导入", Toast.LENGTH_LONG).show()
-        }
-    }
-    DisposableEffect(Unit) {
-        if (!hasPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
-        onDispose { }
-    }
-
-    val imageCapture = remember {
-        ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-            .build()
-    }
-    val cameraProviderRef = remember { mutableStateOf<ProcessCameraProvider?>(null) }
-    DisposableEffect(Unit) {
-        onDispose { cameraProviderRef.value?.unbindAll() }
-    }
-
-    var capturing by remember { mutableStateOf(false) }
-    var errorMsg by remember { mutableStateOf<String?>(null) }
-    var previewBound by remember { mutableStateOf(false) }
-
-    if (!hasPermission) {
-        ImportHint(
-            title = "需要相机权限",
-            detail = "拍照导入需要使用相机。也可以切到「书库」直接选篇目。",
-            action = "授予权限",
-            onAction = { permissionLauncher.launch(Manifest.permission.CAMERA) },
-        )
-        return
-    }
-
+private fun CameraEntry(onOpenCamera: () -> Unit, onPickFromLibrary: () -> Unit) {
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+            // fillMaxHeight: Column 子项约束=剩余屏高 (此前 CameraEntry 内容
+            // 垂直居中用 Center + 空间估计不足, 次按钮被底栏裁掉)
+            .fillMaxWidth()
+            .fillMaxHeight(0.999f)
+            .verticalScroll(rememberScrollState())   // 小屏防溢出 (redroid 720p 实测按钮被裁)
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        // 预览区 (降级: 绑定失败时显示提示, 不阻塞诗词库路径)
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(320.dp)
-                .background(InkBlack, RoundedCornerShape(12.dp)),
-            contentAlignment = Alignment.Center,
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    PreviewView(ctx).apply {
-                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                        // 异步绑定: 成功置 previewBound, 失败置 errorMsg 降级
-                        try {
-                            val future = ProcessCameraProvider.getInstance(ctx)
-                            future.addListener({
-                                try {
-                                    val provider = future.get()
-                                    cameraProviderRef.value = provider
-                                    val preview = Preview.Builder().build()
-                                    preview.setSurfaceProvider(surfaceProvider)
-                                    provider.unbindAll()
-                                    provider.bindToLifecycle(
-                                        lifecycleOwner,
-                                        CameraSelector.DEFAULT_BACK_CAMERA,
-                                        preview,
-                                        imageCapture,
-                                    )
-                                    previewBound = true
-                                } catch (e: Exception) {
-                                    errorMsg = "相机启动失败，可切到「书库」导入"
-                                }
-                            }, ContextCompat.getMainExecutor(ctx))
-                        } catch (_: Exception) {
-                            errorMsg = "相机暂不可用，可切到「书库」导入"
-                        }
-                    }
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-            if (errorMsg != null) {
-                Text(errorMsg!!, color = CardWhite, fontSize = 14.sp)
-            } else if (!previewBound) {
-                Text("相机预览中…", color = CardWhite, fontSize = 14.sp)
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                if (capturing) return@Button
-                capturing = true
-                coroutineScope.launch(Dispatchers.Main) {
-                    val raw = captureAndRecognize(context, imageCapture, lifecycleOwner)
-                    capturing = false
-                    if (raw == null) {
-                        Toast.makeText(context, "拍照或识别失败，请重试或改用书库", Toast.LENGTH_LONG).show()
-                    } else {
-                        onOcrResult(raw)
-                    }
-                }
-            },
-            enabled = !capturing && previewBound,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = BronzeGold,
-                contentColor = InkBlack,
-            ),
-        ) {
-            Text(
-                if (capturing) "识别中…" else "拍 照",
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
         Text(
-            "提示: 将诗文横向拍满画面, 光线充足效果更好。识别后可逐项修改再保存。",
-            fontSize = 13.sp,
-            color = TagGray,
+            "拍照导入课本",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = InkBlack,
         )
-    }
-
-    // 预览兜底: 长时间未绑定成功且无错误 → 给出降级提示
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(5000)
-        if (!previewBound && errorMsg == null && cameraProviderRef.value == null) {
-            errorMsg = "相机暂不可用，可切到「书库」导入"
-        }
-    }
-}
-
-/**
- * 拍照 → OCR, 全程超时兜底 (拍照 12s + 识别 15s), 失败/超时返回 null 由调用方 Toast 降级。
- * 临时照片用完即删。
- */
-private suspend fun captureAndRecognize(
-    context: android.content.Context,
-    imageCapture: ImageCapture,
-    lifecycleOwner: LifecycleOwner,
-): String? {
-    val file = File(context.cacheDir, "ocr_${System.currentTimeMillis()}.jpg")
-    try {
-        // 1) 拍照 (12s 超时)
-        val uri: Uri? = withTimeoutOrNull(12_000) {
-            suspendCancellableCoroutine<Uri?> { cont ->
-                val opts = ImageCapture.OutputFileOptions.Builder(file).build()
-                imageCapture.takePicture(
-                    opts,
-                    ContextCompat.getMainExecutor(context),
-                    object : ImageCapture.OnImageSavedCallback {
-                        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                            cont.resume(output.savedUri ?: Uri.fromFile(file))
-                        }
-
-                        override fun onError(exc: ImageCaptureException) {
-                            cont.resume(null)
-                        }
-                    },
-                )
-            }
-        } ?: return null
-
-        // 2) ML Kit 中文 OCR (15s 超时; 识别器进程内复用)
-        val text = withTimeoutOrNull(15_000) {
-            withContext(Dispatchers.Default) {
-                try {
-                    val recognizer = TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
-                    try {
-                        val image = InputImage.fromFilePath(context, uri!!)
-                        suspendCancellableCoroutine<String?> { cont ->
-                            recognizer.process(image)
-                                .addOnSuccessListener { cont.resume(it.text) }
-                                .addOnFailureListener { cont.resume(null) }
-                        }
-                    } finally {
-                        recognizer.close()
-                    }
-                } catch (_: Exception) {
-                    null
-                }
-            }
-        } ?: return null
-        return text
-    } catch (_: Exception) {
-        return null
-    } finally {
-        file.delete()
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "全屏取景 · 对准书页拍照 · 识别后可核对修改再导入。\n现代文篇目走这条路, 内置书库只收公版内容。",
+            fontSize = 14.sp,
+            color = InkBlackSoft,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        Spacer(modifier = Modifier.height(20.dp))
+        Button(
+            onClick = onOpenCamera,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = BronzeGold, contentColor = InkBlack),
+        ) { Text("打开相机", fontSize = 17.sp, fontWeight = FontWeight.Bold) }
+        Spacer(modifier = Modifier.height(12.dp))
+        OutlinedButton(
+            onClick = onPickFromLibrary,
+            modifier = Modifier.fillMaxWidth(),
+        ) { Text("改用书库选篇目", color = InkBlackSoft) }
     }
 }
 
 // ─── OCR 确认页: 可编辑 → 保存 ───────────────────────────────────────────
 
 @Composable
-private fun ConfirmImport(
+fun ConfirmImport(
     parsed: TextSegmenter.ParsedPoem,
     onCancel: () -> Unit,
     onSave: (BeisongPoem) -> Unit,
@@ -633,29 +422,3 @@ private fun LibraryTab(onImport: (BeisongPoem) -> Unit) {
     }
 }
 
-// ─── 通用提示块 (权限拒绝 / 相机失败降级) ─────────────────────────────────
-
-@Composable
-private fun ImportHint(
-    title: String,
-    detail: String,
-    action: String,
-    onAction: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = InkBlack)
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(detail, fontSize = 14.sp, color = InkBlackSoft, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-        Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = onAction,
-            colors = ButtonDefaults.buttonColors(containerColor = BronzeGold, contentColor = InkBlack),
-        ) { Text(action) }
-    }
-}

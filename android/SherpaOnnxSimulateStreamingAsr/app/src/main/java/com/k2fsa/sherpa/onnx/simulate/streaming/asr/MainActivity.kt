@@ -32,6 +32,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.CameraScreen
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.HelpScreen
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.HomeScreen
 import com.k2fsa.sherpa.onnx.simulate.streaming.asr.screens.ImportScreen
@@ -130,7 +131,14 @@ fun NavigationHost(navController: NavHostController) {
         }
 
         composable(NavRoutes.Import.route) {
-            ImportScreen(onClose = { navController.popBackStack() })
+            ImportScreen(
+                onClose = { navController.popBackStack() },
+                onOpenCamera = { navController.navigate(NavRoutes.Camera.route) },
+            )
+        }
+
+        composable(NavRoutes.Camera.route) {
+            CameraScreen(onClose = { navController.popBackStack() })
         }
 
         composable(NavRoutes.Help.route) {

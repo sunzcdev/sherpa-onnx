@@ -4,4 +4,5 @@ sealed class NavRoutes(val route: String) {
     object Home : NavRoutes("home")
     object Help : NavRoutes("help")
     object Import : NavRoutes("import")
+    object Camera : NavRoutes("camera")   // v0.2.2: 拍照独立全屏页
 }

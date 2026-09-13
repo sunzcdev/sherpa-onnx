@@ -209,3 +209,6 @@ android/SherpaOnnxSimulateStreamingAsr/debug.keystore
 # 必须先 !dir/ 放行目录, 再放行 *.onnx (全局 *.onnx 规则仍命中文件)
 !android/SherpaOnnxSimulateStreamingAsr/app/src/main/assets/sherpa-onnx-whisper-tiny.en/
 !android/SherpaOnnxSimulateStreamingAsr/app/src/main/assets/sherpa-onnx-whisper-tiny.en/*.onnx
+
+# whisper 导出中间产物 (external-data sidecar, 非分发物; 分发用 int8 已进 app assets)
+*.onnx.data
